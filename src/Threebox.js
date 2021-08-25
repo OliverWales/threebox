@@ -898,7 +898,7 @@ Threebox.prototype = {
 
 		if (this.map.repaint) this.map.repaint = false
 
-		var timestamp = Date.now();
+		var timestamp = performance.now();
 
 		// Update any animations
 		this.objects.animationManager.update(timestamp);
@@ -1174,7 +1174,7 @@ Threebox.prototype = {
 
 	programs: function () { return this.renderer.info.programs.length },
 
-	version: '2.2.4',
+	version: 'local',
 
 }
 

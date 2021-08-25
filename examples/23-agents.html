@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Agent Example</title>
+    <link
+      href="https://api.mapbox.com/mapbox-gl-js/v2.2.0/mapbox-gl.css"
+      rel="stylesheet"
+    />
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.2.0/mapbox-gl.js"></script>
+    <script src="../dist/threebox.js" type="text/javascript"></script>
+    <link href="../dist/threebox.css" rel="stylesheet" type="text/css" />
+    <script src="config.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@turf/turf@5/turf.min.js"></script>
+    <style>
+      body,
+      html {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      #map {
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map" class="map"></div>
+
+    <script type="module">
+      export function randomPointDistribution(polygon, count) {
+        const triangulation = turf.tesselate(polygon);
+        const number_of_triangles = triangulation.features.length;
+        const total_area = turf.area(polygon);
+
+        let running_total = 0;
+
+        const count_per_triangle = turf.featureReduce(
+          triangulation,
+          (items, triangle, index) => {
+            const area_triangle = turf.area(triangle);
+            const proportion = area_triangle / total_area;
+            const population =
+              number_of_triangles == index + 1
+                ? count - running_total
+                : Math.floor(count * proportion);
+            running_total = running_total + population;
+            return [...items, { triangle, count: population }];
+          },
+          []
+        );
+
+        const random_points = count_per_triangle.reduce(
+          (all_points, current_triangle) => {
+            const new_points = [];
+            for (let i = 1; i <= current_triangle.count; i++) {
+              new_points.push(randomPointInTriangle(current_triangle.triangle));
+            }
+            return [...all_points, ...new_points];
+          },
+          []
+        );
+        return random_points;
+      }
+
+      export function randomPointInTriangle(triangle) {
+        let wb = Math.random();
+        let wc = Math.random();
+
+        if (wb + wc > 1) {
+          wb = 1 - wb;
+          wc = 1 - wc;
+        }
+
+        const [a, b, c] = triangle.geometry.coordinates[0].map((coord) => ({
+          x: coord[0],
+          y: coord[1],
+        }));
+        const rb_x = wb * (b.x - a.x);
+        const rb_y = wb * (b.y - a.y);
+        const rc_x = wc * (c.x - a.x);
+        const rc_y = wc * (c.y - a.y);
+
+        const r_x = rb_x + rc_x + a.x;
+        const r_y = rb_y + rc_y + a.y;
+
+        return [r_x, r_y];
+      }
+
+      if (!config)
+        console.error(
+          "Config not set! Make a copy of 'config_template.js', add in your access token, and save the file as 'config.js'."
+        );
+
+      mapboxgl.accessToken = config.accessToken;
+
+      var origin = [0.0842401385307312, 52.22880322940387, 1];
+
+      var map = new mapboxgl.Map({
+        container: "map",
+        style: "mapbox://styles/mapbox/light-v10",
+        center: origin,
+        zoom: 17,
+        pitch: 60,
+        antialias: true,
+      });
+
+      let stats;
+      import Stats from "https://threejs.org/examples/jsm/libs/stats.module.js";
+      function animate() {
+        requestAnimationFrame(animate);
+        stats.update();
+      }
+
+      map.on("style.load", function () {
+        stats = new Stats();
+        map.getContainer().appendChild(stats.dom);
+        animate();
+
+        fetch("geojson/girton.geojson")
+          .then((response) => response.json())
+          .then((data) => {
+            map.addSource("girton", {
+              type: "geojson",
+              data: data,
+            });
+
+            map.addLayer({
+              id: "Girton",
+              type: "fill",
+              source: "girton",
+              layout: {},
+              paint: {
+                "fill-color": "#0080ff",
+                "fill-opacity": 0.5,
+              },
+            });
+
+            map.addLayer({
+              id: "Outline",
+              type: "line",
+              source: "girton",
+              layout: {},
+              paint: {
+                "line-color": "#000",
+                "line-width": 3,
+              },
+            });
+
+            map.addLayer({
+              id: "People",
+              type: "custom",
+              renderingMode: "3d",
+              onAdd: function (map, mbxContext) {
+                window.tb = new Threebox(map, mbxContext, {
+                  defaultLights: true,
+                  enableSelectingObjects: false,
+                });
+
+                const polygon = data.features[0];
+                const points = randomPointDistribution(polygon, 10);
+
+                for (const point of points) {
+                  let options = {
+                    type: "gltf",
+                    obj: "./models/person/person@19.glb",
+                    units: "meters",
+                    rotation: { x: 0, y: 0, z: Math.random() * 360 },
+                    scale: 40,
+                    anchor: "center",
+                  };
+
+                  tb.loadObj(options, function (model) {
+                    model.setCoords([point.x, point.y, 1]);
+                    tb.add(model);
+                    model.castShadow = true;
+                  });
+                }
+              },
+
+              render: function (gl, matrix) {
+                tb.update();
+              },
+            });
+          })
+          .catch((err) => console.error(err));
+      });
+    </script>
+  </body>
+</html>
